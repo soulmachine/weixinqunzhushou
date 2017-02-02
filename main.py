@@ -73,9 +73,10 @@ def groupchat_reply(msg):
         logger.warn('Uin is missing: \n' + json.dumps(group) + '\n' + json.dumps(msg))
     group_id = upsert_group(group)
 
+    command_list = [u'菜单', u'签到', u'我的活跃度', u'活跃度排行榜', u'备份聊天记录']
     if db.msg_history.find_one({'_group_id': group_id}) is None:  # 新群
         itchat.send_msg(u'大家好，感谢群主邀请我加入本群，我是一个智能的聊天机器人，帮助群主管理本群，请大家多多关照。'
-                        u'我目前能听懂的指令是:\n菜单\n签到\n活跃度排行榜\n备份聊天记录', msg['FromUserName'])
+                        u'我目前能听懂的指令是:\n' + '\n'.join(command_list), msg['FromUserName'])
 
     user = itchat.search_friends(userName=msg['ActualUserName'])
     if user is None:
@@ -109,7 +110,7 @@ def groupchat_reply(msg):
     print(space_index)
     command = msg['Content'][(space_index+1):]
     if command == u'菜单':
-        itchat.send_msg(u'@%s 我目前能听懂的指令是:\n菜单\n签到\n我的活跃度\n活跃度排行榜\n备份聊天记录' % msg['ActualNickName'],
+        itchat.send_msg((u'@%s 我目前能听懂的指令是:\n' + '\n'.join(command_list)) % msg['ActualNickName'],
                         msg['FromUserName'])
     elif command == u'签到':
         yyyymmdd = datetime.datetime.today().strftime('%Y%m%d')
@@ -141,13 +142,12 @@ def groupchat_reply(msg):
         itchat.send_file(file_path, msg['FromUserName'])
         os.remove(file_path)
     else:
-        itchat.send_msg(u'@%s 未知指令，请重新输入，我目前能听懂的指令是:\n菜单\n签到\n活跃度排行榜\n备份聊天记录' % msg['ActualNickName'],
+        itchat.send_msg((u'@%s 未知指令，请重新输入，我目前能听懂的指令是:\n' + '\n'.join(command_list)) % msg['ActualNickName'],
                         msg['FromUserName'])
 
 
 @itchat.msg_register(NOTE, isGroupChat=True)
 def get_note(msg):
-    print(json.dumps(msg))
     msg['_id'] = msg['MsgId']
     db.msg_history.insert(msg)
     if u'邀请' in msg['Content'] or u'invited' in msg['Content']:
@@ -176,7 +176,6 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, help='mongodb port', default=27017)
     parser.add_argument('--maintenance', type=bool, help='maintenance mode', default=False)
     args = parser.parse_args()
-    print(args)
 
     maintenance_mode = args.maintenance
     # db initialize

@@ -8,3 +8,7 @@
 运行，
 
     python3 main.py --host mongodb_ip --port mongodb_port
+
+通过Docker运行，
+
+    docker run -it --rm -v $(pwd):/code/wxqzs -w /code/wxqzs soulmachine/itchat python3 main.py --host 0.tcp.ngrok.io --port 16960
