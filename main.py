@@ -107,18 +107,27 @@ def tuling_auto_reply(user, content):
     }
     api_url = "http://www.tuling123.com/openapi/api"
     body = {'key': turing123_key, 'info': content.encode('utf8'), 'userid': user['_id']}
-    r = requests.post(api_url, data=body)
-    respond = r.json()
-    result = ''
-    if respond['code'] == 200000:
-        result = respond['text'] + ' ' + respond['url']
-    elif respond['code'] == 302000:
-        for k in respond['list']:
-            result = result + u"【" + k['source'] + u"】 " + k['article'] + "\t" + k['detailurl'] + "\n"
-    else:
-        result = respond['text'].replace('<br>', '\n')
-        result = result.replace(u'\xa0', ' ')
-    return result
+    try:
+        r = requests.post(api_url, data=body).json()
+    except:
+        return u'系统发生异常，请稍后重试'
+    if not r['code'] in (100000, 200000, 302000, 308000, 313000, 314000): return
+    if r['code'] == 100000:  # 文本类
+        return '\n'.join([r['text'].replace('<br>', '\n')])
+    elif r['code'] == 200000:  # 链接类
+        return '\n'.join([r['text'].replace('<br>', '\n'), r['url']])
+    elif r['code'] == 302000:  # 新闻类
+        l = [r['text'].replace('<br>', '\n')]
+        for n in r['list']: l.append('%s - %s' % (n['article'], n['detailurl']))
+        return '\n'.join(l)
+    elif r['code'] == 308000:  # 菜谱类
+        l = [r['text'].replace('<br>', '\n')]
+        for n in r['list']: l.append('%s - %s' % (n['name'], n['detailurl']))
+        return '\n'.join(l)
+    elif r['code'] == 313000:  # 儿歌类
+        return '\n'.join([r['text'].replace('<br>', '\n')])
+    elif r['code'] == 314000:  # 诗词类
+        return '\n'.join([r['text'].replace('<br>', '\n')])
 
 
 @itchat.msg_register(TEXT, isGroupChat=True)
