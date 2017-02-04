@@ -47,9 +47,9 @@ def upsert_user(user):
         return user
     else:  # existed user, update
         user['updatedAt'] = datetime.datetime.utcnow()
-        if user['Uin']:
+        if user['Uin'] and not user_from_db['Uin']:
             user.pop('Uin')
-        if user['Alias']:
+        if user['Alias'] and not user_from_db['Alias']:
             user.pop('Alias')
         db.wx_user.update({'_id': user_from_db['_id']}, {'$set': user})
         return user_from_db
@@ -132,8 +132,7 @@ def tuling_auto_reply(user, content):
 
 @itchat.msg_register(TEXT, isGroupChat=True)
 def groupchat_reply(msg):
-    myself = itchat.get_friends()[-1]
-    if myself['UserName'] == msg['FromUserName']:  # ignore messages from myself
+    if msg['FromUserName'][1:2] != '@':  # ignore messages from myself
         print('myself')
         return
 
