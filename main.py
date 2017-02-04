@@ -48,9 +48,9 @@ def upsert_user(user):
     else:  # existed user, update
         user['updatedAt'] = datetime.datetime.utcnow()
         if user['Uin']:
-            user['Uin'] = None
+            user.pop('Uin')
         if user['Alias']:
-            user['Alias'] = None
+            user.pop('Alias')
         db.wx_user.update({'_id': user_from_db['_id']}, {'$set': user})
         return user_from_db
 
@@ -72,7 +72,7 @@ def upsert_group(group):
     else:  # existed group, update
         group['updatedAt'] = datetime.datetime.utcnow()
         if group['Uin']:
-            group['Uin'] = None
+            group.pop('Uin')
         db.wx_group.update({'_id': group_from_db['_id']}, {'$set': group})
         return group_from_db['_id']
 
@@ -109,7 +109,6 @@ def tuling_auto_reply(user, content):
     body = {'key': turing123_key, 'info': content.encode('utf8'), 'userid': user['_id']}
     r = requests.post(api_url, data=body)
     respond = r.json()
-    print(json.dumps(respond))
     result = ''
     if respond['code'] == 200000:
         result = respond['text'] + ' ' + respond['url']
