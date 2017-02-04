@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
+from bson import json_util
 import json
 import itchat
 import datetime
@@ -10,6 +11,7 @@ from bson.objectid import ObjectId
 import argparse
 import os
 import hashlib
+import requests
 
 
 logging.basicConfig(level=logging.WARN,
@@ -18,9 +20,15 @@ logging.basicConfig(level=logging.WARN,
                               logging.StreamHandler()])
 logger = logging.getLogger('wxqzs')
 
+turing123_key = None
 
-# return the user id
+
+# return the user
 def upsert_user(user):
+    if not user['Uin']:
+        user['Uin'] = None
+    if not user['Alias']:
+        user['Alias'] = None
     user_from_db = db.wx_user.find_one({'Uin': user['Uin']}) if not user['Uin'] else None
     if user_from_db is None:
         user_from_db = db.wx_user.find_one({'Alias': user['Alias']}) if not user['Alias'] else None
@@ -36,15 +44,21 @@ def upsert_user(user):
         user['_id'] = str(ObjectId())
         user['createdAt'] = datetime.datetime.utcnow()
         db.wx_user.insert(user)
-        return user['_id']
+        return user
     else:  # existed user, update
         user['updatedAt'] = datetime.datetime.utcnow()
+        if user['Uin']:
+            user['Uin'] = None
+        if user['Alias']:
+            user['Alias'] = None
         db.wx_user.update({'_id': user_from_db['_id']}, {'$set': user})
-        return user_from_db['_id']
+        return user_from_db
 
 
 # return the group id
 def upsert_group(group):
+    if not group['Uin']:
+        group['Uin'] = None
     group_from_db = db.wx_group.find_one({'Uin': group['Uin']}) if group['Uin'] else None
     if group_from_db is None:
         group_from_db = db.wx_group.find_one({'EncryChatRoomId': group['EncryChatRoomId']})
@@ -57,8 +71,55 @@ def upsert_group(group):
         return group['_id']
     else:  # existed group, update
         group['updatedAt'] = datetime.datetime.utcnow()
+        if group['Uin']:
+            group['Uin'] = None
         db.wx_group.update({'_id': group_from_db['_id']}, {'$set': group})
         return group_from_db['_id']
+
+
+def extract_content(text):
+    space_index = text.find(' ')
+    if space_index == -1:
+        space_index = text.find('\u2005')
+    print(space_index)
+    content = text[(space_index + 1):]
+    return content
+
+
+def tuling_auto_reply(user, content):
+    api_url_v2 = "http://openapi.tuling123.com/openapi/api/v2"
+    body = {
+      'perception': {
+        'inputText': {
+          'text': content
+        },
+        'selfInfo': {
+          'location': {
+            'city': user['City'],
+            'province': user['Province']
+          }
+        }
+      },
+      'userInfo': {
+        'apiKey': turing123_key,
+        "userId": user['_id']
+      }
+    }
+    api_url = "http://www.tuling123.com/openapi/api"
+    body = {'key': turing123_key, 'info': content.encode('utf8'), 'userid': user['_id']}
+    r = requests.post(api_url, data=body)
+    respond = r.json()
+    print(json.dumps(respond))
+    result = ''
+    if respond['code'] == 200000:
+        result = respond['text'] + ' ' + respond['url']
+    elif respond['code'] == 302000:
+        for k in respond['list']:
+            result = result + u"【" + k['source'] + u"】 " + k['article'] + "\t" + k['detailurl'] + "\n"
+    else:
+        result = respond['text'].replace('<br>', '\n')
+        result = result.replace(u'\xa0', ' ')
+    return result
 
 
 @itchat.msg_register(TEXT, isGroupChat=True)
@@ -86,7 +147,8 @@ def groupchat_reply(msg):
     head_img_md5 = hashlib.md5(itchat.get_head_img(userName=msg['ActualUserName'],
                                                    chatroomUserName=msg['FromUserName'])).hexdigest()
     user['HeadImgMD5'] = head_img_md5
-    user_id = upsert_user(user)
+    user = upsert_user(user)
+    user_id = user['_id']
 
     msg['_id'] = msg['MsgId']
     msg['_group_id'] = group_id
@@ -98,17 +160,16 @@ def groupchat_reply(msg):
 
     dirty_words = ['操你妈', '草泥马', '草你妈', '傻逼']
     if any(word in msg['Content'] for word in dirty_words):
-        itchat.send_msg(u'@%s\u2005辱骂性言论，超过3次将踢出本群禁言24小时' % msg['ActualNickName'], msg['FromUserName'])
+        itchat.send_msg(u'@%s 辱骂性言论，超过3次将踢出本群禁言24小时' % msg['ActualNickName'], msg['FromUserName'])
         return
 
     if not ('isAt' in msg and msg['isAt']):  # ignore
         return
+    if msg['Content'][0:1] != '@':
+        itchat.send_msg(u'@%s @必须在最开头的位置' % msg['ActualNickName'], msg['FromUserName'])
+        return
 
-    space_index = msg['Content'].find(' ')
-    if space_index == -1:
-        space_index = msg['Content'].find('\u2005')
-    print(space_index)
-    command = msg['Content'][(space_index+1):]
+    command = extract_content(msg['Content'])
     if command == u'菜单':
         itchat.send_msg((u'@%s 我目前能听懂的指令是:\n' + '\n'.join(command_list)) % msg['ActualNickName'],
                         msg['FromUserName'])
@@ -142,8 +203,12 @@ def groupchat_reply(msg):
         itchat.send_file(file_path, msg['FromUserName'])
         os.remove(file_path)
     else:
-        itchat.send_msg((u'@%s 未知指令，请重新输入，我目前能听懂的指令是:\n' + '\n'.join(command_list)) % msg['ActualNickName'],
-                        msg['FromUserName'])
+        if turing123_key is None:
+            itchat.send_msg((u'@%s 未知指令，请重新输入，我目前能听懂的指令是:\n' + '\n'.join(command_list)) % msg['ActualNickName'],
+                            msg['FromUserName'])
+        else:
+            reply = tuling_auto_reply(user, command)
+            itchat.send_msg(u'@%s %s' % (msg['ActualNickName'], reply), msg['FromUserName'])
 
 
 @itchat.msg_register(NOTE, isGroupChat=True)
@@ -174,10 +239,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Start a WeChat Bot.')
     parser.add_argument('--host', help='mongodb host', default='localhost')
     parser.add_argument('--port', type=int, help='mongodb port', default=27017)
-    parser.add_argument('--maintenance', type=bool, help='maintenance mode', default=False)
+    parser.add_argument('--key', help='turing123 key')
     args = parser.parse_args()
 
-    maintenance_mode = args.maintenance
+    turing123_key = args.key
     # db initialize
     mongo_client = pymongo.MongoClient(args.host, args.port)
     db = mongo_client.wxqzs
