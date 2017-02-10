@@ -25,13 +25,13 @@ turing123_key = None
 
 # return the user
 def upsert_user(user):
-    if not user['Uin']:
-        user['Uin'] = None
-    if not user['Alias']:
-        user['Alias'] = None
-    user_from_db = db.wx_user.find_one({'Uin': user['Uin']}) if not user['Uin'] else None
+    if not user.get('Uin', None):
+        user.pop('Uin', None)
+    if not user.get('Alias', None):
+        user.pop('Alias', None)
+    user_from_db = db.wx_user.find_one({'Uin': user['Uin']}) if user.get('Uin', None) else None
     if user_from_db is None:
-        user_from_db = db.wx_user.find_one({'Alias': user['Alias']}) if not user['Alias'] else None
+        user_from_db = db.wx_user.find_one({'Alias': user['Alias']}) if user.get('Alias', None) else None
     if user_from_db is None:
         tmp = db.wx_user.find({'NickName': user['NickName']})
         if tmp.count() == 1:
@@ -47,9 +47,9 @@ def upsert_user(user):
         return user
     else:  # existed user, update
         user['updatedAt'] = datetime.datetime.utcnow()
-        if user['Uin'] and not user_from_db['Uin']:
+        if user.get('Uin', None) and user_from_db.get('Uin', None):
             user.pop('Uin')
-        if user['Alias'] and not user_from_db['Alias']:
+        if user.get('Alias', None) and user_from_db.get('Alias', None):
             user.pop('Alias')
         db.wx_user.update({'_id': user_from_db['_id']}, {'$set': user})
         return user_from_db
@@ -57,9 +57,9 @@ def upsert_user(user):
 
 # return the group id
 def upsert_group(group):
-    if not group['Uin']:
-        group['Uin'] = None
-    group_from_db = db.wx_group.find_one({'Uin': group['Uin']}) if group['Uin'] else None
+    if not group.get('Uin', None):
+        group.pop('Uin', None)
+    group_from_db = db.wx_group.find_one({'Uin': group['Uin']}) if group.get('Uin', None) else None
     if group_from_db is None:
         group_from_db = db.wx_group.find_one({'EncryChatRoomId': group['EncryChatRoomId']})
     if group_from_db is None:
@@ -71,7 +71,7 @@ def upsert_group(group):
         return group['_id']
     else:  # existed group, update
         group['updatedAt'] = datetime.datetime.utcnow()
-        if group['Uin']:
+        if group.get('Uin', None):
             group.pop('Uin')
         db.wx_group.update({'_id': group_from_db['_id']}, {'$set': group})
         return group_from_db['_id']
